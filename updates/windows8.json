@@ -1,6 +1,6 @@
 {
-  "version": "0.1.11",
-  "downloadUrl": "https://github.com/A097MPRUS/ESDInstaller/releases/download/v0.1.13/ESD-Installer-Windows8-Setup-0.1.11.exe",
-  "sha256": "7c5d8af30ff8db806fe37f89e2b62ef7abd4e0e49c097f6b2972bee33d79961d",
-  "notes": ""
+  "version": "0.1.14",
+  "downloadUrl": "https://github.com/A097MPRUS/ESDInstaller/releases/download/v0.1.14/ESD-Installer-Windows8-Setup-0.1.14.exe",
+  "sha256": "04aecf3aa8e2dd67a330c18c3bf150badb124f84a64585c2aedecb8f2b7a8989",
+  "notes": "Test release with safety and reliability fixes. Try it in a disposable virtual machine first."
 }
