@@ -1,6 +1,6 @@
 {
-  "version": "0.1.11",
-  "downloadUrl": "https://github.com/A097MPRUS/ESDInstaller/releases/download/v0.1.13/ESD-Installer-Windows7-Setup-0.1.11.exe",
-  "sha256": "10282c35339a55aca065a9447a9bda074a60a32bdd19e93b63a6d4bae3a118a7",
-  "notes": ""
+  "version": "0.1.14",
+  "downloadUrl": "https://github.com/A097MPRUS/ESDInstaller/releases/download/v0.1.14/ESD-Installer-Windows7-Setup-0.1.14.exe",
+  "sha256": "4b6172c3f387533652a7d7b90eb8e58b53dbefeb9951b8247191d56ce13faa71",
+  "notes": "Test release with safety and reliability fixes. Try it in a disposable virtual machine first."
 }
