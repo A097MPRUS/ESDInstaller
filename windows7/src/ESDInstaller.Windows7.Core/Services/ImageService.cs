@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using DiscUtils;
 using DiscUtils.Iso9660;
 using DiscUtils.Udf;
@@ -54,12 +56,11 @@ public sealed class ImageService : IDisposable
                 var cacheRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "ESDInstallerWindows7", "ImageCache");
                 Directory.CreateDirectory(cacheRoot);
-                var sourceInfo = new FileInfo(sourcePath);
-                var extension = Path.GetExtension(imageEntry);
-                var cached = Path.Combine(cacheRoot,
-                    Path.GetFileNameWithoutExtension(sourcePath) + "-" + sourceInfo.Length.ToString("x") + "-" +
-                    sourceInfo.LastWriteTimeUtc.Ticks.ToString("x") + extension);
-                if (!File.Exists(cached) || new FileInfo(cached).Length != fileSystem.GetFileLength(imageEntry))
+                var entryLength = fileSystem.GetFileLength(imageEntry);
+                var cached = Path.Combine(cacheRoot, CacheFileName(sourcePath, imageEntry, entryLength));
+                var checksumPath = cached + ".sha256";
+                var imageHash = TryReuseCache(cached, checksumPath, entryLength, progress, cancellationToken);
+                if (imageHash == null)
                 {
                     var partial = cached + ".partial-" + Guid.NewGuid().ToString("N");
                     _temporaryFiles.Add(partial);
@@ -68,10 +69,14 @@ public sealed class ImageService : IDisposable
                         using (var input = fileSystem.OpenFile(imageEntry, FileMode.Open, FileAccess.Read))
                         using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                                    1024 * 1024, FileOptions.SequentialScan))
-                            CopyWithProgress(input, output, progress, cancellationToken);
+                            imageHash = CopyWithProgress(input, output, progress, cancellationToken);
+                        if (new FileInfo(partial).Length != entryLength)
+                            throw new ESDInstallerException("ErrorIsoMount", "The installation image was not extracted completely.");
+                        TryDelete(checksumPath);
                         if (File.Exists(cached)) File.Delete(cached);
                         File.Move(partial, cached);
                         _temporaryFiles.Remove(partial);
+                        File.WriteAllText(checksumPath, imageHash);
                     }
                     catch
                     {
@@ -81,8 +86,9 @@ public sealed class ImageService : IDisposable
                     }
                 }
                 progress?.Invoke(100);
-                return await InspectWimAsync(sourcePath, cached, WindowsImageKind.Iso, "ISO (direct read)", cancellationToken)
+                var image = await InspectWimAsync(sourcePath, cached, WindowsImageKind.Iso, "ISO (direct read)", cancellationToken)
                     .ConfigureAwait(false);
+                return image with { ResolvedImageSha256 = imageHash };
             }
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -130,20 +136,76 @@ public sealed class ImageService : IDisposable
 
     private static bool Exists(DiscFileSystem fileSystem, string path) => FindEntry(fileSystem, path) != null;
 
-    private static void CopyWithProgress(Stream input, Stream output, Action<int>? progress,
+    /// <summary>Copies (or only reads, when output is null) and returns the SHA-256 of the bytes read.</summary>
+    internal static string CopyWithProgress(Stream input, Stream? output, Action<int>? progress,
         CancellationToken cancellationToken)
     {
         var buffer = new byte[1024 * 1024];
         long copied = 0;
         int read;
-        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+        using (var sha = SHA256.Create())
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            output.Write(buffer, 0, read);
-            copied += read;
-            if (input.Length > 0) progress?.Invoke((int)Math.Min(99, copied * 100L / input.Length));
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                output?.Write(buffer, 0, read);
+                sha.TransformBlock(buffer, 0, read, null, 0);
+                copied += read;
+                if (input.Length > 0) progress?.Invoke((int)Math.Min(99, copied * 100L / input.Length));
+            }
+            sha.TransformFinalBlock(buffer, 0, 0);
+            output?.Flush();
+            return Hex.Encode(sha.Hash);
         }
-        output.Flush();
+    }
+
+    /// <summary>
+    /// Different media can share a file name, size and timestamp. Include the full path and
+    /// samples of the ISO's volume descriptors and tail so their caches do not collide.
+    /// </summary>
+    internal static string CacheFileName(string sourcePath, string imageEntry, long entryLength)
+    {
+        using (var iso = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        using (var sha = SHA256.Create())
+        {
+            var header = Encoding.UTF8.GetBytes(string.Join("|", sourcePath.ToUpperInvariant(), iso.Length,
+                File.GetLastWriteTimeUtc(sourcePath).Ticks, imageEntry.ToUpperInvariant(), entryLength));
+            sha.TransformBlock(header, 0, header.Length, null, 0);
+            var sample = new byte[1024 * 1024];
+            foreach (var offset in new[] { 0L, Math.Max(0L, iso.Length - sample.Length) })
+            {
+                iso.Position = offset;
+                var total = 0;
+                int read;
+                while (total < sample.Length && (read = iso.Read(sample, total, sample.Length - total)) > 0) total += read;
+                sha.TransformBlock(sample, 0, total, null, 0);
+            }
+            sha.TransformFinalBlock(sample, 0, 0);
+            var invalid = Path.GetInvalidFileNameChars();
+            var name = new string(Path.GetFileNameWithoutExtension(sourcePath)
+                .Select(c => invalid.Contains(c) ? '_' : c).Take(40).ToArray());
+            return name + "-" + Hex.Encode(sha.Hash).Substring(0, 32) + Path.GetExtension(imageEntry);
+        }
+    }
+
+    /// <summary>Returns the verified checksum of a reusable cache file, or null when it must be extracted again.</summary>
+    internal static string? TryReuseCache(string cached, string checksumPath, long expectedLength, Action<int>? progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(cached) || !File.Exists(checksumPath) || new FileInfo(cached).Length != expectedLength) return null;
+            var expected = File.ReadAllText(checksumPath).Trim();
+            if (!Hex.IsSha256(expected)) return null;
+            using (var input = new FileStream(cached, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024,
+                       FileOptions.SequentialScan))
+            {
+                var actual = CopyWithProgress(input, null, progress, cancellationToken);
+                return Hex.FixedTimeEquals(actual, expected) ? actual : null;
+            }
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
     private async Task<WindowsImage> InspectWimAsync(string sourcePath, string imagePath, WindowsImageKind kind,

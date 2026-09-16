@@ -15,10 +15,11 @@ public partial class ImagePage : Page
     public async Task PickFileAsync()
     {
         var dialog = new OpenFileDialog { Filter = "Windows images (*.iso;*.wim;*.esd)|*.iso;*.wim;*.esd|All files (*.*)|*.*", CheckFileExists = true };
-        if (dialog.ShowDialog() == true) await InspectAsync(dialog.FileName);
+        if (!_coordinator.IsInspectingImage && dialog.ShowDialog() == true) await InspectAsync(dialog.FileName);
     }
     private async Task InspectAsync(string path)
     {
+        if (_coordinator.IsInspectingImage) return;
         Next.IsEnabled = false; Banner.Visibility = Visibility.Collapsed; Details.Visibility = Visibility.Collapsed;
         ExtractionProgress.Value = 0; ExtractionProgress.Visibility = Path.GetExtension(path).ToLowerInvariant() == ".iso" ? Visibility.Visible : Visibility.Collapsed;
         await _coordinator.InspectImageAsync(path, this);
@@ -45,16 +46,31 @@ public partial class ImagePage : Page
     }
     private async void Select_Click(object sender, RoutedEventArgs e) => await PickFileAsync();
     private void Next_Click(object sender, RoutedEventArgs e) => _coordinator.ShowEditionPage();
-    private async void DropArea_Drop(object sender, DragEventArgs e)
+    private async void ImagePage_PreviewDrop(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-        var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-        if (files.Length > 0) await InspectAsync(files[0]);
-    }
-    private void DropArea_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
+        if (TryGetSupportedImagePath(e.Data, out var path)) await InspectAsync(path);
+    }
+
+    private void ImagePage_PreviewDrag(object sender, DragEventArgs e)
+    {
+        e.Effects = TryGetSupportedImagePath(e.Data, out _) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private static bool TryGetSupportedImagePath(IDataObject data, out string path)
+    {
+        path = string.Empty;
+        if (!data.GetDataPresent(DataFormats.FileDrop, true)) return false;
+        if (!(data.GetData(DataFormats.FileDrop, true) is string[] files) || files.Length != 1) return false;
+        var candidate = files[0];
+        if (!File.Exists(candidate)) return false;
+        var extension = Path.GetExtension(candidate);
+        if (!string.Equals(extension, ".iso", System.StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".wim", System.StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".esd", System.StringComparison.OrdinalIgnoreCase)) return false;
+        path = candidate;
+        return true;
     }
     private static string FormatBytes(long bytes)
     {

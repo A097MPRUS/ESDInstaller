@@ -9,8 +9,15 @@
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
     <PackageReference Include="DiscUtils.Iso9660" Version="0.16.13" />
     <PackageReference Include="DiscUtils.Udf" Version="0.16.13" />
-    <PackageReference Include="ManagedWimLib" Version="2.6.0" />
+    <!-- The package's CleanDependsOn omits a separator. Copy native content
+         explicitly so clean/rebuild works without modifying the NuGet cache. -->
+    <PackageReference Include="ManagedWimLib" Version="2.6.0" ExcludeAssets="build" GeneratePathProperty="true" />
     <Reference Include="System.Management" />
     <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(PkgManagedWimLib)\runtimes\win-x86\native\*.dll" Link="x86\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(PkgManagedWimLib)\runtimes\win-x64\native\*.dll" Link="x64\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(PkgManagedWimLib)\runtimes\win-arm64\native\*.dll" Link="arm64\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

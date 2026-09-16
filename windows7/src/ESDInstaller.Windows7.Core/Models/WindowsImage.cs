@@ -20,7 +20,8 @@ public sealed record WindowsImage(
     DateTime SourceLastWriteUtc,
     string? ExtractedIsoDirectory,
     IReadOnlyList<WindowsImageEdition> Editions,
-    string? LegacyReason = null)
+    string? LegacyReason = null,
+    string? ResolvedImageSha256 = null)
 {
     public bool RequiresLegacyEngine => Kind == WindowsImageKind.LegacyIso ||
         Generation is WindowsGeneration.WindowsXp or WindowsGeneration.WindowsVista;

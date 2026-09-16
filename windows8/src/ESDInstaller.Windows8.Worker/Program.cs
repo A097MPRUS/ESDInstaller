@@ -18,8 +18,9 @@ internal static class Program
     private static async Task<int> RunAsync(string[] args)
     {
         var arguments = ParseArguments(args);
-        string? planPath, pipeName, logDirectory;
-        if (!arguments.TryGetValue("plan", out planPath) || !arguments.TryGetValue("pipe", out pipeName) ||
+        string? planPath, planDigest, pipeName, logDirectory;
+        if (!arguments.TryGetValue("plan", out planPath) || !arguments.TryGetValue("plan-sha256", out planDigest) ||
+            !arguments.TryGetValue("pipe", out pipeName) ||
             !arguments.TryGetValue("log-dir", out logDirectory)) return 64;
         if (!PrivilegeService.IsAdministrator()) return 740;
         if (!File.Exists(planPath) || new FileInfo(planPath).Length > 1024 * 1024) return 65;
@@ -33,8 +34,7 @@ internal static class Program
                 InstallationLog? log = null;
                 try
                 {
-                    var plan = JsonConvert.DeserializeObject<InstallationPlan>(File.ReadAllText(planPath, Encoding.UTF8))
-                               ?? throw new ESDInstallerException("ValidationPlanUnreadable", "The plan was empty.");
+                    var plan = ApprovedPlan.Read(planPath, planDigest);
                     log = new InstallationLog(logDirectory);
                     sender.Send(new ProgressMessage(InstallationStage.Connecting, 0, null,
                         "ProgressAdministratorGranted", "", DateTime.UtcNow, false, log.Path));

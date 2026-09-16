@@ -12,10 +12,19 @@ internal static class Program
     private static int _failures;
     private static int Main()
     {
+        Test("monthly review: execution and destination safety", MonthlyReviewTests.RunSafetyChecks);
+        Test("monthly review: updater stability and verification", () => MonthlyReviewTests.RunUpdateChecks().GetAwaiter().GetResult());
+        Test("approved plan binding", LegacyReliabilityTests.RunApprovedPlanChecks);
+        Test("installation image location and lock", LegacyReliabilityTests.RunSourceProtectionChecks);
+        Test("ISO image cache identity and integrity", LegacyReliabilityTests.RunImageCacheChecks);
         Test("command-line quoting", TestQuoting);
         Test("semantic version comparison", TestSemanticVersion);
+        Test("semantic version edge cases", MonthlyReviewTests.RunVersionChecks);
+        Test("command time limits and worker identity", () => MonthlyReviewTests.RunSupervisionChecks().GetAwaiter().GetResult());
         Test("WIM metadata indexes", TestMetadata);
         Test("protected partition policy", TestProtectedPartition);
+        Test("Windows 7 volume classification", TestVolumeClassification);
+        Test("BitLocker protection classification", TestBitLockerProtection);
         Test("Windows 11 bypass keeps disk safety", TestCompatibility);
         Test("plan fingerprint", TestPlanFingerprint);
         Test("localization key parity", TestLocalization);
@@ -57,6 +66,30 @@ internal static class Program
         var recovery = Partition(0, 4, PartitionRole.Recovery, false, false);
         var normal = Partition(1, 2, PartitionRole.BasicData, false, false);
         Require(current.IsProtected && recovery.IsProtected && !normal.IsProtected, "partition protection classification failed");
+    }
+    private static void TestVolumeClassification()
+    {
+        Require(DiskService.ClassifyPartitionRole("Installable File System", "NTFS", true) == PartitionRole.BasicData,
+            "an ordinary Windows 7 NTFS volume was not classified as basic data");
+        Require(DiskService.ClassifyPartitionRole("Installable File System", "", false) == PartitionRole.BasicData,
+            "an unmounted Windows 7 IFS partition was incorrectly classified as a system partition");
+        Require(DiskService.ClassifyPartitionRole("GPT: System", "FAT32", true) == PartitionRole.EfiSystem,
+            "a genuine EFI system partition was not protected");
+        Require(DiskService.ClassifyPartitionRole("Unknown", "", true) == PartitionRole.BasicData,
+            "a mounted volume with a drive letter was incorrectly protected");
+        Require(DiskService.ClassifyPartitionRole("GPT: Recovery", "NTFS", true) == PartitionRole.Recovery,
+            "a recovery partition lost its protected role");
+        Require(DiskService.ClassifyPartitionRole("GPT: Unknown", "", false) == PartitionRole.Unknown,
+            "an unidentified unmounted partition became selectable");
+    }
+    private static void TestBitLockerProtection()
+    {
+        Require(!DiskService.HasActiveBitLockerProtection(0, 0),
+            "a fully decrypted volume with BitLocker off was incorrectly protected");
+        Require(DiskService.HasActiveBitLockerProtection(1, 0),
+            "an actively protected volume was not blocked");
+        Require(DiskService.HasActiveBitLockerProtection(0, 1),
+            "a fully encrypted volume with suspended protection was not blocked");
     }
     private static void TestCompatibility()
     {

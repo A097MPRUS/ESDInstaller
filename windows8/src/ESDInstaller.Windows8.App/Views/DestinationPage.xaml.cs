@@ -19,7 +19,13 @@ public partial class DestinationPage : Page
     private readonly SolidColorBrush _selectedBorder = new(Color.FromRgb(0, 120, 215));
 
     public DestinationPage(WizardCoordinator coordinator) { InitializeComponent(); _coordinator = coordinator; }
-    public void ShowLoading(bool value) => Loading.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+    public void ShowLoading(bool value)
+    {
+        Loading.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        // Old disk cards must not be selectable while they are being replaced.
+        DiskList.IsEnabled = !value;
+        if (value) Next.IsEnabled = false;
+    }
     public void ShowError(string title, string detail) { Banner.SetError(title, detail); Banner.Visibility = Visibility.Visible; }
 
     public void ShowDisks(IReadOnlyList<DiskInfo> disks, CompatibilitySnapshot host)

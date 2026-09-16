@@ -3,10 +3,11 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <Deterministic>true</Deterministic>
-    <Company>ESD Installer Project</Company>
+    <Company>A097MPRUS</Company>
+    <Copyright>Copyright © 2026 A097MPRUS</Copyright>
     <Product>ESD Installer</Product>
-    <Version>0.1.10-windows7</Version>
-    <AssemblyVersion>0.1.10.0</AssemblyVersion>
-    <FileVersion>0.1.10.0</FileVersion>
+    <Version>0.1.14-windows7</Version>
+    <AssemblyVersion>0.1.14.0</AssemblyVersion>
+    <FileVersion>0.1.14.0</FileVersion>
   </PropertyGroup>
 </Project>

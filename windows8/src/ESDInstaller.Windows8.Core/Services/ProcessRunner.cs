@@ -21,8 +21,10 @@ public sealed class ProcessRunner
         IReadOnlyDictionary<string, string?>? environment = null,
         Action<string, bool>? output = null,
         Action<int>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? timeout = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var info = new ProcessStartInfo
         {
             FileName = executable,
@@ -72,17 +74,27 @@ public sealed class ProcessRunner
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            using (cancellationToken.Register(delegate
-                   {
-                       exited.TrySetCanceled();
-                       try { if (!process.HasExited) process.Kill(); } catch { }
-                   }))
+            using (var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                try { await exited.Task.ConfigureAwait(false); }
-                catch (TaskCanceledException) { throw new OperationCanceledException(cancellationToken); }
+                if (timeout.HasValue) limit.CancelAfter(timeout.Value);
+                using (limit.Token.Register(delegate
+                       {
+                           exited.TrySetCanceled();
+                           try { if (!process.HasExited) process.Kill(); } catch { }
+                       }))
+                {
+                    try { await exited.Task.ConfigureAwait(false); }
+                    catch (TaskCanceledException)
+                    {
+                        process.WaitForExit(5000);
+                        if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException(cancellationToken);
+                        throw new TimeoutException(Path.GetFileName(executable) + " did not finish within " + timeout + " and was stopped.");
+                    }
+                }
             }
 
-            process.WaitForExit();
+            // A helper process that inherited the output pipes must not block completion forever.
+            process.WaitForExit(10000);
             watch.Stop();
             return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString(), watch.Elapsed);
         }

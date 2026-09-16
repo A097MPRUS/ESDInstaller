@@ -69,7 +69,7 @@ public sealed partial class UpdateWindow : Window
         try
         {
             var installer = await App.Services.Updates.DownloadAndVerifyAsync(_manifest, progress, _downloadCancellation.Token);
-            UpdateService.LaunchInstaller(installer);
+            await UpdateService.LaunchInstallerAsync(installer, _manifest.Sha256, _downloadCancellation.Token);
             App.MainWindowInstance?.Close();
             Close();
         }

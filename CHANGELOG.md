@@ -1,6 +1,41 @@
 # Changelog
 
+## 0.1.14 test release — 2026-09-16
+
+Automated checks passed, but these changes have not yet been tested through a full Windows installation. Try them in a disposable virtual machine first.
+
+### All editions
+
+- Stops the app from erasing the partition that contains your installation image.
+- Checks that the installer uses exactly the installation choices you approved.
+- Improved checks for unavailable, read-only, or unsuitable installation partitions.
+- Update downloads that stop responding or are unexpectedly large now fail instead of hanging, and the downloaded update is checked again right before it starts.
+- Fixed update checks getting stuck after the computer's clock changes, and separate update downloads overwriting each other.
+- Stopped update prompts from interrupting a Windows installation.
+- Installation commands that stop responding are now stopped instead of leaving the installation waiting forever.
+
+### Windows 10/11
+
+- Fixed repeated clicks and disk refreshes leaving the app with outdated selections.
+- Improved handling of file-opening errors and cancelled operations.
+
+### Windows 7 and Windows 8/8.1
+
+- Fixed two different ISO files with the same name possibly sharing extracted files; a damaged or changed extracted image is now detected before installation.
+- Fixed repeated clicks, refreshes and image selections leaving outdated selections, and a possible crash when reading disks failed.
+- Improved drive-letter checks so installation stops if the destination cannot be confirmed.
+
+Keep the image on a separate local drive from the destination. WIM and ESD files (and any image on Windows 10/11) on network drives are blocked. No new languages or interface redesign are included. The installers remain unsigned.
+
 ## Unreleased
+
+### Fixed
+
+- Fixed ordinary Windows 7 NTFS partitions being classified as EFI system partitions because `Installable File System` contains the word `System`.
+- Fixed the Windows 7 BitLocker check so a fully decrypted volume with protection off is not blocked merely because it is BitLocker-capable.
+- Fixed Windows 7 ISO/WIM/ESD drag-and-drop by handling supported file drops at the page preview level.
+- Replaced the Windows 7 edition-list deployment glyph with a cleaner Windows 7-era image mark.
+- Updated Windows 7 executable and installer metadata to identify `A097MPRUS`.
 
 ### Added
 

@@ -56,6 +56,7 @@ public sealed partial class MainWindow : Window
 
     public void SetInstallLock(bool locked)
     {
+        if (locked) _updateWindow?.Close();
         _installLocked = locked;
         OpenImageButton.IsEnabled = !locked;
         RefreshDisksButton.IsEnabled = !locked;
@@ -220,7 +221,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowUpdateWindow(UpdateManifest manifest)
     {
-        if (_updateWindow is not null) return;
+        if (_installLocked || _updateWindow is not null) return;
         _updateWindow = new UpdateWindow(manifest);
         _updateWindow.Closed += (_, _) => _updateWindow = null;
         _updateWindow.Activate();

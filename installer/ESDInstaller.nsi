@@ -6,11 +6,15 @@ Unicode true
 !include "WinVer.nsh"
 
 !ifndef APP_VERSION
-  !define APP_VERSION "0.1.12"
+  !define APP_VERSION "0.1.14"
 !endif
 !ifndef APP_SOURCE
   !error "APP_SOURCE must point to the self-contained ESDInstaller publish directory."
 !endif
+!ifndef APP_VERSION_NUMERIC
+  !define APP_VERSION_NUMERIC "${APP_VERSION}.0"
+!endif
+
 !ifndef OUTPUT_FILE
   !define OUTPUT_FILE "ESD-Installer-Setup-${APP_VERSION}.exe"
 !endif
@@ -41,7 +45,7 @@ AutoCloseWindow false
 BrandingText "ESD Installer"
 Icon "${APP_ICON}"
 UninstallIcon "${APP_ICON}"
-VIProductVersion "0.1.12.0"
+VIProductVersion "${APP_VERSION_NUMERIC}"
 VIAddVersionKey /LANG=1033 "ProductName" "ESD Installer"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${APP_VERSION}"
 VIAddVersionKey /LANG=1033 "FileDescription" "ESD Installer Setup"

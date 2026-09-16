@@ -6,6 +6,9 @@ namespace ESDInstaller.Core.Installation;
 
 public sealed class ModernWindowsEngine : IInstallationEngine
 {
+    // Generous limits: these commands normally finish in seconds, but must not hang forever.
+    private static readonly TimeSpan BootTimeout = TimeSpan.FromMinutes(15), RegistryTimeout = TimeSpan.FromMinutes(5);
+
     public InstallationEngineKind Kind => InstallationEngineKind.ModernWindows;
 
     public async Task ExecuteAsync(InstallationPlan plan, InstallationExecutionContext context,
@@ -22,6 +25,9 @@ public sealed class ModernWindowsEngine : IInstallationEngine
         context.Log.Write("COMPATIBILITY", $"Windows 11 unsupported-hardware bypass: {plan.BypassWindows11Requirements}");
 
         context.Progress(InstallationStage.Validating, 1, null, "ProgressValidatingPlan");
+        // Keep both source files read-only and reject source/target overlap
+        // before any formatting or boot operation.
+        using var sourceLease = SourceImageLease.Open(plan);
         await context.Validator.ValidateAsync(plan, cancellationToken).ConfigureAwait(false);
         context.Progress(InstallationStage.PreparingDestination, 4, null, "ProgressPreparingDestination");
 
@@ -70,7 +76,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
             context.Log.Write("COMMAND", FormatCommand(bcdboot, bootArguments));
             var bootResult = await context.Processes.RunAsync(bcdboot, bootArguments,
                 output: (line, isError) => context.Log.Write(isError ? "BCDBOOT-STDERR" : "BCDBOOT", line),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken, timeout: BootTimeout).ConfigureAwait(false);
             context.Log.Write("RESULT", $"BCDBoot exit code {bootResult.ExitCode}; elapsed {bootResult.Elapsed}");
             if (!bootResult.Succeeded)
                 throw new ESDInstallerException("ErrorBcdBoot", $"BCDBoot exited with code {bootResult.ExitCode}. {bootResult.StandardError}".Trim());
@@ -145,7 +151,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
             {
                 var unload = await context.Processes.RunAsync(reg, new[] { "unload", mountRoot },
                     output: (line, isError) => context.Log.Write(isError ? "REG-STDERR" : "REG", line),
-                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                    cancellationToken: CancellationToken.None, timeout: RegistryTimeout).ConfigureAwait(false);
                 context.Log.Write("RESULT", $"REG unload exit code {unload.ExitCode}; elapsed {unload.Elapsed}");
                 if (!unload.Succeeded)
                     throw new ESDInstallerException("ErrorWindows11Bypass", $"The offline SYSTEM registry hive could not be unloaded. {unload.StandardError}".Trim());
@@ -159,7 +165,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
         context.Log.Write("COMMAND", FormatCommand(reg, arguments));
         var result = await context.Processes.RunAsync(reg, arguments,
             output: (line, isError) => context.Log.Write(isError ? "REG-STDERR" : "REG", line),
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken, timeout: RegistryTimeout).ConfigureAwait(false);
         context.Log.Write("RESULT", $"REG exit code {result.ExitCode}; elapsed {result.Elapsed}");
         if (!result.Succeeded)
             throw new ESDInstallerException("ErrorWindows11Bypass",

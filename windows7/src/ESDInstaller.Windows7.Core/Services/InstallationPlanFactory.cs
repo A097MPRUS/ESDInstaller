@@ -15,7 +15,7 @@ public sealed class InstallationPlanFactory
         var boot = session.BootPartition ?? throw new InvalidOperationException("No valid boot partition was selected.");
         var compatibility = session.Compatibility ?? throw new InvalidOperationException("Compatibility was not inspected.");
         var source = new SourceIdentity(image.SourcePath, image.ResolvedImagePath, image.Kind, image.FileSizeBytes,
-            image.SourceLastWriteUtc);
+            image.SourceLastWriteUtc, image.ResolvedImageSha256);
         var diskIdentity = new DiskIdentity(disk.Number, disk.UniqueId, disk.SerialNumber, disk.SafeDisplayName,
             disk.SizeBytes, disk.PartitionScheme);
         var target = ToIdentity(partition);
@@ -55,7 +55,7 @@ public sealed class InstallationPlanFactory
             source.SourceLastWriteUtc.Ticks, edition.Index, edition.Build, disk.UniqueId, disk.SerialNumber,
             disk.SizeBytes, destination.PartitionNumber, destination.OffsetBytes, destination.LengthBytes,
             destination.PartitionGuid, boot.PartitionNumber, boot.OffsetBytes, boot.LengthBytes,
-            boot.PartitionGuid, bypass });
+            boot.PartitionGuid, bypass, source.ImageSha256 ?? "" });
         using (var sha = SHA256.Create())
             return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(value))).Replace("-", "").Substring(0, 12);
     }

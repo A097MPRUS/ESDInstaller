@@ -15,6 +15,8 @@ public sealed class WizardCoordinator
     private readonly Localizer _text;
     private ImagePage? _imagePage;
     private DestinationPage? _destinationPage;
+    // Ignore repeated clicks while the matching operation is still running.
+    private bool _inspectingImage, _refreshingDisks, _installing;
     public WizardCoordinator(MainWindow window, AppServices services)
     {
         _window = window; _services = services; _text = services.Localizer;
@@ -30,11 +32,17 @@ public sealed class WizardCoordinator
     }
     public async Task OpenImageAsync()
     {
+        if (_inspectingImage) return;
         if (CurrentStep != 0 || _imagePage == null) ShowImagePage();
         await _imagePage!.PickFileAsync();
     }
+    public bool IsInspectingImage => _inspectingImage;
     public async Task InspectImageAsync(string path, ImagePage page)
     {
+        if (_inspectingImage) return;
+        _inspectingImage = true;
+        // A plan approved for the previous image must never survive a replacement.
+        Session.Plan = null;
         _window.SetStatus(_text.Get("StatusInspectingImage"));
         try
         {
@@ -47,6 +55,7 @@ public sealed class WizardCoordinator
         { page.ShowError(_text.Get(exception.MessageKey), exception.Detail); _window.SetStatus(_text.Get("StatusError")); }
         catch (Exception exception)
         { page.ShowError(_text.Get("ErrorUnexpected"), exception.Message); _window.SetStatus(_text.Get("StatusError")); }
+        finally { _inspectingImage = false; }
     }
     public void ShowEditionPage()
     {
@@ -68,19 +77,31 @@ public sealed class WizardCoordinator
             if (Session.Edition == null) { _window.SetStatus(_text.Get("StatusSelectImageFirst")); return; }
             await ShowDestinationPageAsync(); return;
         }
-        _window.SetStatus(_text.Get("StatusReadingDisks")); _destinationPage.ShowLoading(true);
+        if (_refreshingDisks) return;
+        _refreshingDisks = true;
+        var page = _destinationPage;
+        _window.SetStatus(_text.Get("StatusReadingDisks")); page.ShowLoading(true);
+        Session.DestinationDisk = null; Session.DestinationPartition = null; Session.BootPartition = null; Session.Plan = null;
         try
         {
             var disks = _services.Disks.GetDisksAsync(); var compatibility = _services.Compatibility.InspectHostAsync();
             await Task.WhenAll(disks, compatibility);
+            // The user may have navigated away while disks were being read.
+            if (CurrentStep != 2 || _destinationPage != page) return;
             Session.Disks = disks.Result; Session.Compatibility = compatibility.Result;
             Session.DestinationDisk = null; Session.DestinationPartition = null; Session.BootPartition = null;
-            _destinationPage.ShowDisks(Session.Disks, Session.Compatibility);
+            page.ShowDisks(Session.Disks, Session.Compatibility);
             _window.SetStatus(_text.Get("StatusSelectDestination"));
         }
         catch (ESDInstallerException exception)
-        { _destinationPage.ShowError(_text.Get(exception.MessageKey), exception.Detail); _window.SetStatus(_text.Get("StatusError")); }
-        finally { _destinationPage.ShowLoading(false); }
+        {
+            if (_destinationPage == page) { page.ShowError(_text.Get(exception.MessageKey), exception.Detail); _window.SetStatus(_text.Get("StatusError")); }
+        }
+        catch (Exception exception)
+        {
+            if (_destinationPage == page) { page.ShowError(_text.Get("ErrorUnexpected"), exception.Message); _window.SetStatus(_text.Get("StatusError")); }
+        }
+        finally { page.ShowLoading(false); _refreshingDisks = false; }
     }
     public void SelectDestination(DiskInfo disk, PartitionInfo partition)
     {
@@ -124,13 +145,15 @@ public sealed class WizardCoordinator
     }
     public async Task BeginInstallationAsync()
     {
-        if (Session.Plan == null) return;
+        if (Session.Plan == null || _installing) return;
+        _installing = true;
         CurrentStep = 5; _window.SetStep(5); _window.SetInstallLock(true);
         var page = new ProgressPage(this); _window.PageFrame.Content = page;
         _window.SetStatus(_text.Get("StatusWaitingForAdministrator")); await page.ExecuteAsync(Session.Plan);
     }
     public void InstallationFinished(bool succeeded)
     {
+        _installing = false;
         _window.SetInstallLock(false);
         _window.SetStatus(_text.Get(succeeded ? "StatusInstallationComplete" : "StatusInstallationFailed"));
     }

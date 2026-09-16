@@ -13,6 +13,7 @@ internal static class Program
     {
         var arguments = ParseArguments(args);
         if (!arguments.TryGetValue("plan", out var planPath) ||
+            !arguments.TryGetValue("plan-sha256", out var planDigest) ||
             !arguments.TryGetValue("pipe", out var pipeName) ||
             !arguments.TryGetValue("log-dir", out var logDirectory))
         {
@@ -30,9 +31,7 @@ internal static class Program
         InstallationLog? log = null;
         try
         {
-            var json = await File.ReadAllTextAsync(planPath, Encoding.UTF8).ConfigureAwait(false);
-            var plan = JsonSerializer.Deserialize<InstallationPlan>(json, JsonOptions())
-                       ?? throw new ESDInstallerException("ValidationPlanUnreadable", "The installation plan was empty.");
+            var plan = await ApprovedPlan.ReadAsync(planPath, planDigest).ConfigureAwait(false);
             log = new InstallationLog(logDirectory);
             sender.Send(new ProgressMessage(InstallationStage.Connecting, 0, null, "ProgressAdministratorGranted",
                 string.Empty, DateTime.UtcNow, LogPath: log.Path));
@@ -88,12 +87,6 @@ internal static class Program
         }
         return result;
     }
-
-    private static JsonSerializerOptions JsonOptions() => new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true
-    };
 
     private sealed class ProgressSender : IAsyncDisposable
     {

@@ -21,6 +21,10 @@ public sealed class CompatibilityService
         bool bypassWindows11Requirements = false)
     {
         var issues = new List<PlanIssue>();
+        if (host.FirmwareMode != FirmwareMode.Bios && host.FirmwareMode != FirmwareMode.Uefi)
+            issues.Add(Error("unknown-firmware", "ValidationFirmwareSchemeChanged", host.FirmwareMode.ToString()));
+        if (destination.DiskNumber != disk.Number)
+            issues.Add(Error("target-other-disk", "ValidationPartitionChanged", destination.StableKey));
         var bypass = bypassWindows11Requirements && image.Generation == WindowsGeneration.Windows11;
         if (image.RequiresLegacyEngine)
             issues.Add(Error("legacy-engine", image.LegacyReason ?? "LegacyEngineUnavailable", image.DisplayVersion));
@@ -85,6 +89,7 @@ public sealed class CompatibilityService
 
     public static PartitionInfo? FindBootPartition(DiskInfo disk, FirmwareMode firmwareMode, PartitionInfo destination)
     {
+        if (firmwareMode != FirmwareMode.Bios && firmwareMode != FirmwareMode.Uefi) return null;
         if (firmwareMode == FirmwareMode.Uefi)
             return disk.Partitions.FirstOrDefault(p => p.Role == PartitionRole.EfiSystem && !p.IsOffline && !p.IsReadOnly);
         return disk.Partitions.FirstOrDefault(p => p.IsActive && p.FileSystem.Equals("NTFS", StringComparison.OrdinalIgnoreCase))
@@ -93,6 +98,7 @@ public sealed class CompatibilityService
 
     private static bool ArchitectureCompatible(CpuArchitecture image, CpuArchitecture host, FirmwareMode firmware)
     {
+        if (image == CpuArchitecture.Unknown || host == CpuArchitecture.Unknown) return false;
         if (image == host) return true;
         return image == CpuArchitecture.X86 && host == CpuArchitecture.X64 && firmware == FirmwareMode.Bios;
     }

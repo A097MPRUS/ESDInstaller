@@ -23,21 +23,27 @@ public sealed class SemanticVersion : IComparable<SemanticVersion>
         return version;
     }
 
-    public static bool TryParse(string value, out SemanticVersion version)
+    public static bool TryParse(string? value, out SemanticVersion version)
     {
         version = null!;
         if (string.IsNullOrWhiteSpace(value)) return false;
-        var text = value.Trim();
+        var text = value!.Trim();
         if (text.StartsWith("v", StringComparison.OrdinalIgnoreCase)) text = text.Substring(1);
         var buildIndex = text.IndexOf('+');
-        if (buildIndex >= 0) text = text.Substring(0, buildIndex);
+        if (buildIndex >= 0)
+        {
+            // Build metadata is ignored for precedence but must still be well formed.
+            if (!text.Substring(buildIndex + 1).Split('.').All(IsIdentifier)) return false;
+            text = text.Substring(0, buildIndex);
+        }
         var preRelease = new string[0];
         var preReleaseIndex = text.IndexOf('-');
         if (preReleaseIndex >= 0)
         {
             preRelease = text.Substring(preReleaseIndex + 1).Split('.');
             text = text.Substring(0, preReleaseIndex);
-            if (preRelease.Length == 0 || preRelease.Any(string.IsNullOrEmpty)) return false;
+            if (!preRelease.All(part => IsIdentifier(part) && (!IsNumeric(part) || part == "0" || part[0] != '0')))
+                return false;
         }
         var parts = text.Split('.');
         int major, minor, patch;
@@ -46,7 +52,7 @@ public sealed class SemanticVersion : IComparable<SemanticVersion>
         return true;
     }
 
-    public int CompareTo(SemanticVersion other)
+    public int CompareTo(SemanticVersion? other)
     {
         if (other == null) return 1;
         var result = Major.CompareTo(other.Major); if (result != 0) return result;
@@ -56,13 +62,16 @@ public sealed class SemanticVersion : IComparable<SemanticVersion>
         if (other.PreRelease.Count == 0) return -1;
         for (var index = 0; index < Math.Min(PreRelease.Count, other.PreRelease.Count); index++)
         {
-            int left, right;
-            var leftNumeric = int.TryParse(PreRelease[index], out left);
-            var rightNumeric = int.TryParse(other.PreRelease[index], out right);
-            if (leftNumeric && rightNumeric) result = left.CompareTo(right);
+            var left = PreRelease[index];
+            var right = other.PreRelease[index];
+            var leftNumeric = IsNumeric(left);
+            var rightNumeric = IsNumeric(right);
+            // Numeric identifiers have no leading zeros, so length then digits orders any size exactly.
+            if (leftNumeric && rightNumeric)
+                result = left.Length != right.Length ? left.Length.CompareTo(right.Length) : string.CompareOrdinal(left, right);
             else if (leftNumeric != rightNumeric) result = leftNumeric ? -1 : 1;
-            else result = string.CompareOrdinal(PreRelease[index], other.PreRelease[index]);
-            if (result != 0) return result;
+            else result = string.CompareOrdinal(left, right);
+            if (result != 0) return Math.Sign(result);
         }
         return PreRelease.Count.CompareTo(other.PreRelease.Count);
     }
@@ -70,6 +79,15 @@ public sealed class SemanticVersion : IComparable<SemanticVersion>
     public override string ToString() => Major + "." + Minor + "." + Patch +
         (PreRelease.Count == 0 ? string.Empty : "-" + string.Join(".", PreRelease));
 
-    private static bool TryPart(string value, out int part) =>
-        int.TryParse(value, out part) && part >= 0 && (value == "0" || !value.StartsWith("0", StringComparison.Ordinal));
+    private static bool IsNumeric(string value) => value.Length > 0 && value.All(c => c >= '0' && c <= '9');
+
+    private static bool IsIdentifier(string value) => value.Length > 0 &&
+        value.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-');
+
+    private static bool TryPart(string value, out int part)
+    {
+        part = 0;
+        return IsNumeric(value) && (value == "0" || value[0] != '0') &&
+               int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out part);
+    }
 }

@@ -15,6 +15,8 @@ public sealed class ExecutionPlanValidator
 
     public async Task ValidateAsync(InstallationPlan plan, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidatePlanStructure(plan);
         if (plan.Engine != InstallationEngineKind.ModernWindows)
             throw new ESDInstallerException("LegacyEngineUnavailable", plan.Engine.ToString());
         if (plan.BypassWindows11Requirements && plan.Generation != WindowsGeneration.Windows11)
@@ -39,6 +41,8 @@ public sealed class ExecutionPlanValidator
         if (!DiskMatches(disk, plan.DestinationDisk))
             throw new ESDInstallerException("ValidationDiskChanged", $"Expected {plan.DestinationDisk.UniqueId}; found {disk.UniqueId}");
 
+        if (disk.IsReadOnly || disk.IsOffline)
+            throw new ESDInstallerException("ValidationDiskUnavailable", disk.StableKey);
         var destination = FindPartition(disk, plan.DestinationPartition);
         if (destination is null) throw new ESDInstallerException("ValidationPartitionChanged", "Destination partition identity did not match.");
         if (destination.IsProtected || destination.IsBitLocker)
@@ -50,11 +54,38 @@ public sealed class ExecutionPlanValidator
         if (boot is null) throw new ESDInstallerException("ValidationBootPartitionChanged", "Boot partition identity did not match.");
         if (plan.FirmwareMode == FirmwareMode.Uefi && boot.Role != PartitionRole.EfiSystem)
             throw new ESDInstallerException("ValidationEfiPartitionRequired", boot.StableKey);
+        if (boot.IsReadOnly || boot.IsOffline || boot.IsBitLocker)
+            throw new ESDInstallerException("ErrorBootPartitionAccess", "The boot partition is unavailable or encrypted.");
+        if (plan.FirmwareMode == FirmwareMode.Uefi && !string.Equals(boot.FileSystem, "FAT32", StringComparison.OrdinalIgnoreCase))
+            throw new ESDInstallerException("ValidationEfiFat32Required", boot.FileSystem);
         if (plan.FirmwareMode == FirmwareMode.Bios && !boot.IsActive)
             throw new ESDInstallerException("ValidationActivePartitionRequired", boot.StableKey);
         if (plan.FirmwareMode == FirmwareMode.Uefi && disk.PartitionScheme != PartitionScheme.Gpt ||
             plan.FirmwareMode == FirmwareMode.Bios && disk.PartitionScheme != PartitionScheme.Mbr)
             throw new ESDInstallerException("ValidationFirmwareSchemeChanged", $"{plan.FirmwareMode}/{disk.PartitionScheme}");
+    }
+
+    internal static void ValidatePlanStructure(InstallationPlan plan)
+    {
+        if (plan == null || plan.Source == null || plan.Edition == null ||
+            plan.DestinationDisk == null || plan.DestinationPartition == null || plan.BootPartition == null)
+            throw new ESDInstallerException("ValidationPlanUnreadable", "The installation plan is incomplete.");
+        if (plan.DestinationDisk.DiskNumber < 0 ||
+            plan.DestinationPartition.DiskNumber != plan.DestinationDisk.DiskNumber ||
+            plan.BootPartition.DiskNumber != plan.DestinationDisk.DiskNumber)
+            throw new ESDInstallerException("ValidationPlanUnreadable", "Partition disk numbers do not match the validated disk.");
+        foreach (var partition in new[] { plan.DestinationPartition, plan.BootPartition })
+        {
+            if (partition.PartitionNumber <= 0 || partition.OffsetBytes < 0 || partition.LengthBytes <= 0 ||
+                partition.OffsetBytes > long.MaxValue - partition.LengthBytes)
+                throw new ESDInstallerException("ValidationPartitionChanged", "Invalid partition geometry.");
+        }
+        if (plan.FirmwareMode != FirmwareMode.Bios && plan.FirmwareMode != FirmwareMode.Uefi)
+            throw new ESDInstallerException("ValidationFirmwareSchemeChanged", "Firmware mode could not be determined.");
+        if (plan.PartitionScheme != plan.DestinationDisk.PartitionScheme ||
+            (plan.FirmwareMode == FirmwareMode.Bios && plan.PartitionScheme != PartitionScheme.Mbr) ||
+            (plan.FirmwareMode == FirmwareMode.Uefi && plan.PartitionScheme != PartitionScheme.Gpt))
+            throw new ESDInstallerException("ValidationFirmwareSchemeChanged", "Firmware and partition scheme do not match.");
     }
 
     private static bool DiskMatches(DiskInfo actual, DiskIdentity expected)

@@ -12,6 +12,7 @@ public sealed partial class ImagePage : Page
 {
     private readonly WizardCoordinator _coordinator;
     private readonly Localizer _text = App.Services.Localizer;
+    private bool _pickerOpen;
 
     public ImagePage(WizardCoordinator coordinator)
     {
@@ -22,6 +23,10 @@ public sealed partial class ImagePage : Page
 
     public async Task PickFileAsync()
     {
+        if (_pickerOpen || _coordinator.IsInspectingImage) return;
+        _pickerOpen = true;
+        try
+        {
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.Downloads };
         picker.FileTypeFilter.Add(".iso");
         picker.FileTypeFilter.Add(".wim");
@@ -31,6 +36,9 @@ public sealed partial class ImagePage : Page
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
         var file = await picker.PickSingleFileAsync();
         if (file is not null) await InspectAsync(file.Path);
+        }
+        catch (Exception exception) { ShowError(_text.Get("ErrorUnexpected"), exception.Message); }
+        finally { _pickerOpen = false; }
     }
 
     public void ShowImage(WindowsImage image)
@@ -65,6 +73,7 @@ public sealed partial class ImagePage : Page
 
     private async Task InspectAsync(string path)
     {
+        if (_coordinator.IsInspectingImage) return;
         ErrorBar.IsOpen = false;
         LegacyBar.IsOpen = false;
         InspectProgress.Visibility = Visibility.Visible;
@@ -79,6 +88,7 @@ public sealed partial class ImagePage : Page
 
     private void Page_DragOver(object sender, DragEventArgs e)
     {
+        if (_coordinator.IsInspectingImage) { e.AcceptedOperation = DataPackageOperation.None; return; }
         if (e.DataView.Contains(StandardDataFormats.StorageItems))
         {
             e.AcceptedOperation = DataPackageOperation.Copy;
@@ -88,6 +98,9 @@ public sealed partial class ImagePage : Page
 
     private async void Page_Drop(object sender, DragEventArgs e)
     {
+        if (_coordinator.IsInspectingImage) return;
+        try
+        {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         var items = await e.DataView.GetStorageItemsAsync();
         var file = items.OfType<StorageFile>().FirstOrDefault();
@@ -98,6 +111,8 @@ public sealed partial class ImagePage : Page
             extension.Equals(".esd", StringComparison.OrdinalIgnoreCase))
             await InspectAsync(file.Path);
         else ShowError(_text.Get("ErrorUnsupportedImageType"), extension);
+        }
+        catch (Exception exception) { ShowError(_text.Get("ErrorUnexpected"), exception.Message); }
     }
 
     internal static string FormatBytes(long bytes)

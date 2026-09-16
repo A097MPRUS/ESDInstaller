@@ -1,4 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net461</TargetFramework><AssemblyName>ESDInstaller.Windows8.Tests</AssemblyName><LangVersion>latest</LangVersion><Nullable>enable</Nullable></PropertyGroup>
   <ItemGroup><PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net461" Version="1.0.3" PrivateAssets="all"/><ProjectReference Include="..\..\src\ESDInstaller.Windows8.Core\ESDInstaller.Windows8.Core.csproj"/><Reference Include="System.Xml.Linq"/></ItemGroup>
+  <PropertyGroup><DefineConstants>$(DefineConstants);WINDOWS8_REVIEW</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\ESDInstaller.Windows8.App\Services\UpdateService.cs" Link="UpdateService.cs" />
+    <Compile Include="..\..\..\tests\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
 </Project>

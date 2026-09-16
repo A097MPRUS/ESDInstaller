@@ -13,8 +13,15 @@ internal static class Program
     private static int _failures;
     private static int Main()
     {
+        Test("monthly review: execution and destination safety", MonthlyReviewTests.RunSafetyChecks);
+        Test("monthly review: updater stability and verification", () => MonthlyReviewTests.RunUpdateChecks().GetAwaiter().GetResult());
+        Test("approved plan binding", LegacyReliabilityTests.RunApprovedPlanChecks);
+        Test("installation image location and lock", LegacyReliabilityTests.RunSourceProtectionChecks);
+        Test("ISO image cache identity and integrity", LegacyReliabilityTests.RunImageCacheChecks);
         Test("command-line quoting", TestQuoting);
         Test("semantic version comparison", TestSemanticVersion);
+        Test("semantic version edge cases", MonthlyReviewTests.RunVersionChecks);
+        Test("command time limits and worker identity", () => MonthlyReviewTests.RunSupervisionChecks().GetAwaiter().GetResult());
         Test("WIM metadata indexes", TestMetadata);
         Test("protected partition policy", TestProtectedPartition);
         Test("active MBR target classification", TestActiveMbrTargetClassification);

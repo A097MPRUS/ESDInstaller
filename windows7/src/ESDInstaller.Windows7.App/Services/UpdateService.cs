@@ -51,14 +51,20 @@ public sealed class UpdateService : IDisposable
 {
     public const string ManifestUrl = "https://raw.githubusercontent.com/A097MPRUS/ESDInstaller/main/updates/windows7.json";
     private static readonly TimeSpan MinimumCheckInterval = TimeSpan.FromHours(24);
+    /// <summary>Largest accepted installer download; current installers are far smaller.</summary>
+    internal const long MaximumInstallerBytes = 512L * 1024 * 1024;
+    private const int MaximumManifestBytes = 64 * 1024;
+    internal TimeSpan DownloadStallTimeout { get; set; } = TimeSpan.FromSeconds(60);
     private readonly SettingsService _settings;
     private readonly HttpClient _client;
 
-    public UpdateService(SettingsService settings)
+    public UpdateService(SettingsService settings) : this(settings, new HttpClientHandler()) { }
+
+    internal UpdateService(SettingsService settings, HttpMessageHandler handler)
     {
         _settings = settings;
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-        _client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = MaximumManifestBytes };
     }
 
     public string InstalledVersion
@@ -76,13 +82,14 @@ public sealed class UpdateService : IDisposable
         {
             if (!_settings.Current.CheckForUpdatesAutomatically) return new UpdateCheckResult(UpdateCheckStatus.Skipped);
             var last = _settings.Current.LastUpdateCheckUtc;
-            if (last.HasValue && DateTimeOffset.UtcNow - last.Value < MinimumCheckInterval)
+            if (last.HasValue && last.Value <= DateTimeOffset.UtcNow &&
+                DateTimeOffset.UtcNow - last.Value < MinimumCheckInterval)
                 return new UpdateCheckResult(UpdateCheckStatus.Skipped);
         }
 
-        _settings.RecordUpdateCheck(DateTimeOffset.UtcNow);
         try
         {
+            _settings.RecordUpdateCheck(DateTimeOffset.UtcNow);
             using (var request = new HttpRequestMessage(HttpMethod.Get, ManifestUrl))
             {
                 request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
@@ -110,12 +117,11 @@ public sealed class UpdateService : IDisposable
     {
         ValidateManifest(manifest);
         var uri = new Uri(manifest.DownloadUrl, UriKind.Absolute);
-        var directory = Path.Combine(Path.GetTempPath(), "ESDInstaller", "Updates");
+        var directory = Path.Combine(Path.GetTempPath(), "ESDInstaller", "Updates", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var destination = Path.Combine(directory, Path.GetFileName(uri.LocalPath));
         if (string.IsNullOrWhiteSpace(Path.GetFileName(destination)))
             throw new UpdateVerificationException("The update URL does not contain a valid file name.");
-        TryDelete(destination);
         try
         {
             using (var response = await _client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
@@ -125,6 +131,8 @@ public sealed class UpdateService : IDisposable
                     response.RequestMessage.RequestUri.Scheme != Uri.UriSchemeHttps)
                     throw new UpdateVerificationException("The update download was redirected to an insecure address.");
                 var total = response.Content.Headers.ContentLength;
+                if (total.HasValue && total.Value > MaximumInstallerBytes)
+                    throw new UpdateVerificationException("The update download is larger than allowed.");
                 using (var source = await response.Content.ReadAsStreamAsync())
                 using (var target = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
                 {
@@ -132,13 +140,17 @@ public sealed class UpdateService : IDisposable
                     long received = 0;
                     while (true)
                     {
-                        var count = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                        var count = await ReadWithStallTimeoutAsync(source, buffer, response, cancellationToken);
                         if (count == 0) break;
-                        await target.WriteAsync(buffer, 0, count, cancellationToken);
                         received += count;
+                        if (received > MaximumInstallerBytes)
+                            throw new UpdateVerificationException("The update download is larger than allowed.");
+                        await target.WriteAsync(buffer, 0, count, cancellationToken);
                         progress.Report(new UpdateTransferProgress(
                             total.HasValue && total.Value > 0 ? (double?)(received * 100d / total.Value) : null));
                     }
+                    if (total.HasValue && received != total.Value)
+                        throw new IOException("The update download was incomplete.");
                 }
             }
             progress.Report(new UpdateTransferProgress(null, true));
@@ -150,10 +162,14 @@ public sealed class UpdateService : IDisposable
         catch { TryDelete(destination); throw; }
     }
 
-    public static void LaunchInstaller(string path) => Process.Start(new ProcessStartInfo
+    public static async Task LaunchInstallerAsync(string path, string expectedSha256, CancellationToken cancellationToken)
     {
-        FileName = path, UseShellExecute = true, Verb = "runas"
-    });
+        using (await OpenVerifiedInstallerAsync(path, expectedSha256, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using (Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true, Verb = "runas" })) { }
+        }
+    }
 
     public void Dispose() => _client.Dispose();
 
@@ -175,6 +191,12 @@ public sealed class UpdateService : IDisposable
     private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
     {
         using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true))
+            return await ComputeSha256Async(stream, cancellationToken);
+    }
+
+    private static async Task<string> ComputeSha256Async(Stream stream, CancellationToken cancellationToken)
+    {
+        stream.Position = 0;
         using (var sha = SHA256.Create())
         {
             var buffer = new byte[81920];
@@ -186,6 +208,43 @@ public sealed class UpdateService : IDisposable
             }
             sha.TransformFinalBlock(new byte[0], 0, 0);
             return BitConverter.ToString(sha.Hash).Replace("-", string.Empty).ToLowerInvariant();
+        }
+    }
+
+    /// <summary>
+    /// Opens the installer so it cannot be changed, renamed or deleted, then verifies its hash.
+    /// The caller keeps the handle open until Windows has started the installer.
+    /// </summary>
+    internal static async Task<FileStream> OpenVerifiedInstallerAsync(string path, string expectedSha256,
+        CancellationToken cancellationToken)
+    {
+        var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
+        try
+        {
+            if (!string.Equals(await ComputeSha256Async(file, cancellationToken), NormalizeHash(expectedSha256),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new UpdateVerificationException("The downloaded update changed before it could be started.");
+            return file;
+        }
+        catch { file.Dispose(); throw; }
+    }
+
+    private async Task<int> ReadWithStallTimeoutAsync(Stream source, byte[] buffer, IDisposable response,
+        CancellationToken cancellationToken)
+    {
+        using (var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            var read = source.ReadAsync(buffer, 0, buffer.Length, stall.Token);
+            if (await Task.WhenAny(read, Task.Delay(DownloadStallTimeout, stall.Token)).ConfigureAwait(false) != read)
+            {
+                // Network reads do not always observe cancellation; closing the response ends them.
+                stall.Cancel();
+                response.Dispose();
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new IOException("The update download stopped responding.");
+            }
+            stall.Cancel();
+            return await read.ConfigureAwait(false);
         }
     }
 

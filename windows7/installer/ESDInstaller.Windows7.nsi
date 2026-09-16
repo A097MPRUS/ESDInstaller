@@ -5,11 +5,15 @@ Unicode true
 !include "WinVer.nsh"
 
 !ifndef APP_VERSION
-  !define APP_VERSION "0.1.10"
+  !define APP_VERSION "0.1.14"
 !endif
 !ifndef APP_SOURCE
   !error "APP_SOURCE must point to the Windows 7 package directory."
 !endif
+!ifndef APP_VERSION_NUMERIC
+  !define APP_VERSION_NUMERIC "${APP_VERSION}.0"
+!endif
+
 !ifndef OUTPUT_FILE
   !define OUTPUT_FILE "ESD-Installer-Windows7-Setup-${APP_VERSION}.exe"
 !endif
@@ -39,7 +43,7 @@ ShowUninstDetails show
 BrandingText "ESD Installer"
 Icon "${APP_ICON}"
 UninstallIcon "${APP_ICON}"
-VIProductVersion "0.1.10.0"
+VIProductVersion "${APP_VERSION_NUMERIC}"
 VIAddVersionKey /LANG=1033 "ProductName" "${APP_NAME}"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${APP_VERSION}"
 VIAddVersionKey /LANG=1033 "FileVersion" "${APP_VERSION}"

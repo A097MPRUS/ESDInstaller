@@ -73,7 +73,7 @@ public partial class MainWindow : Window
         try
         {
             var result = await App.Services.Updates.CheckAsync(false);
-            if (result.Status == UpdateCheckStatus.Available && result.Manifest != null && IsVisible)
+            if (result.Status == UpdateCheckStatus.Available && result.Manifest != null && IsVisible && !_installLocked)
                 new UpdateWindow(result.Manifest) { Owner = this }.ShowDialog();
         }
         catch { }

@@ -7,4 +7,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ESDInstaller.Core\ESDInstaller.Core.csproj" />
   </ItemGroup>
+  <PropertyGroup><DefineConstants>$(DefineConstants);MODERN_REVIEW</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\ESDInstaller.App\Services\UpdateService.cs" Link="UpdateService.cs" />
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

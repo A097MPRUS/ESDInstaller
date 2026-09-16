@@ -19,8 +19,10 @@ public sealed class ProcessRunner
         IReadOnlyDictionary<string, string?>? environment = null,
         Action<string, bool>? output = null,
         Action<int>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? timeout = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var info = new ProcessStartInfo
         {
             FileName = executable,
@@ -69,6 +71,7 @@ public sealed class ProcessRunner
             output?.Invoke(eventArgs.Data, true);
         };
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (!process.Start())
         {
             throw new InvalidOperationException($"Could not start {Path.GetFileName(executable)}.");
@@ -77,15 +80,19 @@ public sealed class ProcessRunner
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeout.HasValue) limit.CancelAfter(timeout.Value);
         try
         {
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
             process.WaitForExit();
         }
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch { }
-            throw;
+            try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); } catch { }
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout} and was stopped.");
         }
 
         watch.Stop();

@@ -15,10 +15,11 @@ public partial class ImagePage : Page
     public async Task PickFileAsync()
     {
         var dialog = new OpenFileDialog { Filter = "Windows images (*.iso;*.wim;*.esd)|*.iso;*.wim;*.esd|All files (*.*)|*.*", CheckFileExists = true };
-        if (dialog.ShowDialog() == true) await InspectAsync(dialog.FileName);
+        if (!_coordinator.IsInspectingImage && dialog.ShowDialog() == true) await InspectAsync(dialog.FileName);
     }
     private async Task InspectAsync(string path)
     {
+        if (_coordinator.IsInspectingImage) return;
         Next.IsEnabled = false; Banner.Visibility = Visibility.Collapsed; Details.Visibility = Visibility.Collapsed;
         ExtractionProgress.Value = 0; ExtractionProgress.IsIndeterminate = true;
         ExtractionProgress.Visibility = Path.GetExtension(path).ToLowerInvariant() == ".iso" ? Visibility.Visible : Visibility.Collapsed;

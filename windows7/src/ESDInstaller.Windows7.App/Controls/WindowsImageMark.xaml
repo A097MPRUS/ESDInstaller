@@ -1,16 +1,12 @@
 <UserControl x:Class="ESDInstaller.Windows7.Controls.WindowsImageMark"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="44" Height="44">
-  <Grid>
-    <Border CornerRadius="4" BorderBrush="#FF6C859B" BorderThickness="1" Margin="1,18,1,1">
-      <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFE9F1F7"/><GradientStop Color="#FF9DB4C7" Offset="1"/></LinearGradientBrush></Border.Background>
-      <Grid><Ellipse Width="6" Height="6" Fill="#FF42A533" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,4"/>
-        <Rectangle Height="2" Fill="#FFFFFFFF" Opacity=".7" VerticalAlignment="Top" Margin="3,3,3,0"/></Grid>
-    </Border>
-    <Grid Width="27" Height="24" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,2,0,0">
-      <Path Fill="#FF2D81C5" Stroke="#FF17619C" StrokeThickness=".6" Data="M0,2 L12,0 L12,11 L0,11 Z M14,0 L27,0 L27,11 L14,11 Z M0,13 L12,13 L12,24 L0,22 Z M14,13 L27,13 L27,24 L14,24 Z"/>
-      <Path Stroke="#FFFFFFFF" StrokeThickness="1" Opacity=".5" Data="M1,3 L11,2 M15,1 L26,1"/>
-    </Grid>
-    <Path Fill="#FF3A9EDD" Stroke="#FF176496" StrokeThickness="1" Data="M27,18 L41,18 L41,23 L44,23 L34,34 L24,23 L27,23 Z"/>
+  <Grid Margin="3">
+    <Grid.Effect><DropShadowEffect Color="#65000000" BlurRadius="4" Direction="270" ShadowDepth="2" Opacity=".55"/></Grid.Effect>
+    <Path Fill="#FFDF4438" Stroke="#FF9A2C26" StrokeThickness=".7" Data="M2,4 L18,2 L18,18 L2,18 Z"/>
+    <Path Fill="#FF68A83A" Stroke="#FF487529" StrokeThickness=".7" Data="M21,1.7 L38,0 L38,18 L21,18 Z"/>
+    <Path Fill="#FF2D81C5" Stroke="#FF1C5B91" StrokeThickness=".7" Data="M2,21 L18,21 L18,37 L2,35 Z"/>
+    <Path Fill="#FFF2B72E" Stroke="#FFB27C18" StrokeThickness=".7" Data="M21,21 L38,21 L38,39 L21,37.2 Z"/>
+    <Path Stroke="#FFFFFFFF" StrokeThickness="1.2" Opacity=".5" Data="M3,5 L17,3.5 M22,3 L37,1.5 M3,22.5 L17,22.5 M22,22.5 L37,22.5"/>
   </Grid>
 </UserControl>

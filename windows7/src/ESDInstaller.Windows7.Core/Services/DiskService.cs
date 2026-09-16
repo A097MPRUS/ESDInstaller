@@ -56,12 +56,13 @@ public sealed class DiskService
                 char? letter = letterText.Length > 0 ? char.ToUpperInvariant(letterText[0]) : (char?)null;
                 var current = letter.HasValue && string.Equals(letter + ":", Environment.GetEnvironmentVariable("SystemDrive"),
                     StringComparison.OrdinalIgnoreCase);
-                var role = RoleFromType(type, Text(logical == null ? null : logical["FileSystem"]));
+                var fileSystem = Text(logical == null ? null : logical["FileSystem"]);
+                var role = ClassifyPartitionRole(type, fileSystem, letter.HasValue);
                 var paths = letter.HasValue ? new[] { letter + ":\\" } : Array.Empty<string>();
                 result.Add(new PartitionInfo(diskNumber, ToInt(partition["Index"]) + 1,
                     ToLong(partition["StartingOffset"]), ToLong(partition["Size"]), letter,
                     Text(logical == null ? null : logical["VolumeName"]),
-                    Text(logical == null ? null : logical["FileSystem"]), string.Empty, type,
+                    fileSystem, string.Empty, type,
                     GptTypeForRole(role), 0, role, ToBool(partition["Bootable"]),
                     ToBool(partition["BootPartition"]) || current,
                     role == PartitionRole.EfiSystem || (ToBool(partition["Bootable"]) && !current),
@@ -91,20 +92,38 @@ public sealed class DiskService
             using (var searcher = new ManagementObjectSearcher(scope,
                        new ObjectQuery("SELECT * FROM Win32_EncryptableVolume WHERE DriveLetter='" + letter + ":'")))
             using (var items = searcher.Get())
-                return items.Count > 0;
+            {
+                foreach (ManagementObject item in items)
+                {
+                    using (item)
+                    {
+                        if (HasActiveBitLockerProtection(ToInt(item["ProtectionStatus"]),
+                                ToInt(item["ConversionStatus"])))
+                            return true;
+                    }
+                }
+                return false;
+            }
         }
         catch { return false; }
     }
 
-    private static PartitionRole RoleFromType(string type, string fileSystem)
+    internal static bool HasActiveBitLockerProtection(int protectionStatus, int conversionStatus) =>
+        protectionStatus == 1 || conversionStatus != 0;
+
+    internal static PartitionRole ClassifyPartitionRole(string type, string fileSystem, bool hasDriveLetter)
     {
-        if (type.IndexOf("System", StringComparison.OrdinalIgnoreCase) >= 0) return PartitionRole.EfiSystem;
+        var isEfiSystem = type.StartsWith("GPT: System", StringComparison.OrdinalIgnoreCase) ||
+                          (type.IndexOf("EFI", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                           type.IndexOf("System", StringComparison.OrdinalIgnoreCase) >= 0);
+        if (isEfiSystem) return PartitionRole.EfiSystem;
         if (type.IndexOf("Reserved", StringComparison.OrdinalIgnoreCase) >= 0) return PartitionRole.MicrosoftReserved;
         if (type.IndexOf("Recovery", StringComparison.OrdinalIgnoreCase) >= 0) return PartitionRole.Recovery;
         if (type.IndexOf("OEM", StringComparison.OrdinalIgnoreCase) >= 0) return PartitionRole.Oem;
         if (type.IndexOf("Basic", StringComparison.OrdinalIgnoreCase) >= 0 ||
             type.IndexOf("Installable", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            !string.IsNullOrWhiteSpace(fileSystem)) return PartitionRole.BasicData;
+            string.Equals(type.Trim(), "IFS", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrWhiteSpace(fileSystem) || hasDriveLetter) return PartitionRole.BasicData;
         return PartitionRole.Unknown;
     }
 

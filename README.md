@@ -19,7 +19,7 @@ The application includes multiple safety checks and refuses workflows it cannot 
 | --- | --- | --- | --- |
 | Windows 10/11 | Windows 10 or Windows 11 | .NET 8 and WinUI 3 | Version 0.1.12 |
 | Windows 8/8.1 | Windows 8 or Windows 8.1 | .NET Framework 4.6.1 and WPF | Version 0.1.11 |
-| Windows 7 | Windows 7 SP1 or later | .NET Framework 4.8 and WPF | Version 0.1.10 |
+| Windows 7 | Windows 7 SP1 or later | .NET Framework 4.8 and WPF | Version 0.1.11 |
 
 The Windows 7-compatible edition has now been added under [`windows7/`](windows7/). It preserves the same six-page installation workflow, safety model, features, controls, localization, and elevated-worker separation while replacing Windows 10-only platform dependencies.
 
@@ -31,9 +31,11 @@ The [latest release](https://github.com/A097MPRUS/ESDInstaller/releases/latest) 
 
 - `ESD-Installer-Setup-0.1.12.exe` for Windows 10 and Windows 11.
 - `ESD-Installer-Windows8-Setup-0.1.11.exe` for Windows 8 and Windows 8.1.
-- `ESD-Installer-Windows7-Setup-0.1.10.exe` for Windows 7 SP1.
+- `ESD-Installer-Windows7-Setup-0.1.11.exe` for Windows 7 SP1.
 
 Portable builds are not published. Review the [changelog](CHANGELOG.md) before installing.
+
+Version 0.1.14 of all three editions is available as a [test release](https://github.com/A097MPRUS/ESDInstaller/releases/tag/v0.1.14). It has not yet been tested through a full Windows installation, so try it in a disposable virtual machine first.
 
 ## Optional update notifications
 

@@ -22,6 +22,15 @@ string PlaceholderSignature(string value) => string.Join("|", Regex.Matches(valu
 
 try
 {
+    await ModernReliabilityTests.RunAsync();
+    MonthlyReviewTests.RunSafetyChecks();
+    Check(true, "Monthly review: plan identity, firmware and destination safety");
+    await MonthlyReviewTests.RunUpdateChecks();
+    Check(true, "Monthly review: update scheduling, offline errors, isolated downloads and verification");
+    MonthlyReviewTests.RunVersionChecks();
+    Check(true, "Semantic version edge cases");
+    await MonthlyReviewTests.RunSupervisionChecks();
+    Check(true, "Command time limits and worker pipe identity");
     Check(SemanticVersion.Parse("1.10.0").CompareTo(SemanticVersion.Parse("1.9.0")) > 0,
         "Semantic version numeric comparison");
     Check(SemanticVersion.Parse("2.0.0").CompareTo(SemanticVersion.Parse("2.0.0-rc.1")) > 0,

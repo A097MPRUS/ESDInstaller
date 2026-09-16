@@ -25,6 +25,14 @@ public sealed partial class DestinationPage : Page
 
     public void ShowLoading(bool loading)
     {
+        DiskPanel.IsHitTestVisible = !loading;
+        if (loading)
+        {
+            NextButton.IsEnabled = false;
+            SelectionText.Text = string.Empty;
+            DiskPanel.Children.Clear();
+            _partitionBorders.Clear();
+        }
         LoadingRing.IsActive = loading;
         LoadingRing.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
     }

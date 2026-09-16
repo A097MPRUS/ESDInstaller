@@ -9,7 +9,7 @@ public sealed record PartitionIdentity(int DiskNumber, int PartitionNumber, long
     string PartitionGuid, char? DriveLetter, string VolumeLabel, string FileSystem, PartitionRole Role);
 
 public sealed record SourceIdentity(string SourcePath, string ImagePath, WindowsImageKind Kind,
-    long SourceSizeBytes, DateTime SourceLastWriteUtc);
+    long SourceSizeBytes, DateTime SourceLastWriteUtc, string? ImageSha256 = null);
 
 public sealed record PlannedOperation(string Id, string DescriptionKey, bool Destructive);
 

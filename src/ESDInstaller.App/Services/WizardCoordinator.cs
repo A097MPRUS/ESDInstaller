@@ -12,6 +12,9 @@ public sealed class WizardCoordinator
     private readonly Localizer _text;
     private ImagePage? _imagePage;
     private DestinationPage? _destinationPage;
+    private bool _refreshBusy;
+    private bool _installInProgress;
+    public bool IsInspectingImage { get; private set; }
 
     public WizardCoordinator(MainWindow window, AppServices services)
     {
@@ -35,12 +38,22 @@ public sealed class WizardCoordinator
 
     public async Task OpenImageAsync()
     {
+        if (IsInspectingImage || _installInProgress) return;
         if (CurrentStep != 0 || _imagePage is null) ShowImagePage();
         await _imagePage!.PickFileAsync();
     }
 
     public async Task InspectImageAsync(string path, ImagePage page)
     {
+        if (IsInspectingImage || _installInProgress) return;
+        IsInspectingImage = true;
+        // A failed replacement image must never leave the old plan usable.
+        Session.Image = null;
+        Session.Edition = null;
+        Session.DestinationDisk = null;
+        Session.DestinationPartition = null;
+        Session.BootPartition = null;
+        Session.Plan = null;
         _window.SetStatus(_text.Get("StatusInspectingImage"));
         try
         {
@@ -65,6 +78,7 @@ public sealed class WizardCoordinator
             page.ShowError(_text.Get("ErrorUnexpected"), exception.Message);
             _window.SetStatus(_text.Get("StatusError"));
         }
+        finally { IsInspectingImage = false; }
     }
 
     public void ShowEditionPage()
@@ -90,6 +104,7 @@ public sealed class WizardCoordinator
 
     public async Task RefreshDisksAsync()
     {
+        if (_refreshBusy || IsInspectingImage || _installInProgress) return;
         if (CurrentStep != 2 || _destinationPage is null)
         {
             if (Session.Edition is null)
@@ -101,31 +116,60 @@ public sealed class WizardCoordinator
             return;
         }
 
+        _refreshBusy = true;
+        var page = _destinationPage;
+        var selectedEdition = Session.Edition;
+        Session.DestinationDisk = null;
+        Session.DestinationPartition = null;
+        Session.BootPartition = null;
+        Session.Plan = null;
         _window.SetStatus(_text.Get("StatusReadingDisks"));
-        _destinationPage.ShowLoading(true);
+        page.ShowLoading(true);
         try
         {
             var diskTask = _services.Disks.GetDisksAsync();
             var compatibilityTask = _services.Compatibility.InspectHostAsync();
             await Task.WhenAll(diskTask, compatibilityTask);
+            if (CurrentStep != 2 || !ReferenceEquals(page, _destinationPage) ||
+                !ReferenceEquals(selectedEdition, Session.Edition)) return;
             Session.Disks = diskTask.Result;
             Session.Compatibility = compatibilityTask.Result;
             Session.DestinationDisk = null;
             Session.DestinationPartition = null;
             Session.BootPartition = null;
-            _destinationPage.ShowDisks(Session.Disks, Session.Compatibility);
+            page.ShowDisks(Session.Disks, Session.Compatibility);
             _window.SetStatus(_text.Get("StatusSelectDestination"));
         }
         catch (ESDInstallerException exception)
         {
-            _destinationPage.ShowError(_text.Get(exception.MessageKey), exception.TechnicalDetail);
-            _window.SetStatus(_text.Get("StatusError"));
+            if (CurrentStep == 2 && ReferenceEquals(page, _destinationPage))
+            {
+                page.ShowError(_text.Get(exception.MessageKey), exception.TechnicalDetail);
+                _window.SetStatus(_text.Get("StatusError"));
+            }
         }
-        finally { _destinationPage.ShowLoading(false); }
+        catch (Exception exception)
+        {
+            if (CurrentStep == 2 && ReferenceEquals(page, _destinationPage))
+            {
+                page.ShowError(_text.Get("ErrorUnexpected"), exception.Message);
+                _window.SetStatus(_text.Get("StatusError"));
+            }
+        }
+        finally
+        {
+            page.ShowLoading(false);
+            _refreshBusy = false;
+            // If navigation created a different destination page while this
+            // read was in flight, load that page rather than leaving it empty.
+            if (CurrentStep == 2 && !ReferenceEquals(page, _destinationPage))
+                await RefreshDisksAsync();
+        }
     }
 
     public void SelectDestination(DiskInfo disk, PartitionInfo partition)
     {
+        if (_refreshBusy || _installInProgress) return;
         Session.DestinationDisk = disk;
         Session.DestinationPartition = partition;
         Session.BootPartition = Session.Compatibility is null
@@ -193,14 +237,24 @@ public sealed class WizardCoordinator
 
     public async Task BeginInstallationAsync()
     {
-        if (Session.Plan is null) return;
-        CurrentStep = 5;
-        _window.SetStep(5);
-        _window.SetInstallLock(true);
-        var page = new ProgressPage(this);
-        _window.PageFrame.Content = page;
-        _window.SetStatus(_text.Get("StatusWaitingForAdministrator"));
-        await page.ExecuteAsync(Session.Plan);
+        if (_installInProgress || _refreshBusy || IsInspectingImage || Session.Plan is null) return;
+        _installInProgress = true;
+        try
+        {
+            CurrentStep = 5;
+            _window.SetStep(5);
+            _window.SetInstallLock(true);
+            var page = new ProgressPage(this);
+            _window.PageFrame.Content = page;
+            _window.SetStatus(_text.Get("StatusWaitingForAdministrator"));
+            await page.ExecuteAsync(Session.Plan);
+        }
+        catch (Exception exception)
+        {
+            StartupDiagnostics.Write("Installation startup failed: " + exception);
+            _window.SetStatus(_text.Get("StatusInstallationFailed"));
+        }
+        finally { _installInProgress = false; _window.SetInstallLock(false); }
     }
 
     public void InstallationFinished(bool succeeded)

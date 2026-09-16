@@ -6,6 +6,8 @@ namespace ESDInstaller.Windows8.Core.Installation;
 public sealed class ModernWindowsEngine : IInstallationEngine
 {
     public InstallationEngineKind Kind => InstallationEngineKind.ModernWindows;
+    // Generous limits: these commands normally finish in seconds, but must not hang forever.
+    private static readonly TimeSpan BootTimeout = TimeSpan.FromMinutes(15), RegistryTimeout = TimeSpan.FromMinutes(5);
 
     public async Task ExecuteAsync(InstallationPlan plan, InstallationExecutionContext context,
         CancellationToken cancellationToken = default)
@@ -14,6 +16,9 @@ public sealed class ModernWindowsEngine : IInstallationEngine
             throw new ESDInstallerException("AdministratorRequired", "The installation worker is not elevated.");
         LogPlan(plan, context.Log);
         context.Progress(InstallationStage.Validating, 1, null, "ProgressValidatingPlan");
+        // Keep both source files read-only, reject source/target overlap and
+        // verify extracted ISO content before any formatting or boot operation.
+        using var sourceLease = SourceImageLease.Open(plan, cancellationToken);
         await context.Validator.ValidateAsync(plan, cancellationToken).ConfigureAwait(false);
 
         context.Progress(InstallationStage.PreparingDestination, 4, null, "ProgressPreparingDestination");
@@ -55,7 +60,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
         {
             Path.Combine(destinationRoot, "Windows"), "/s", bootRoot.TrimEnd('\\')
         };
-        var help = await context.Processes.RunAsync(bcdboot, new[] { "/?" }, cancellationToken: cancellationToken)
+        var help = await context.Processes.RunAsync(bcdboot, new[] { "/?" }, cancellationToken: cancellationToken, timeout: RegistryTimeout)
             .ConfigureAwait(false);
         if ((help.StandardOutput + help.StandardError).IndexOf("/f", StringComparison.OrdinalIgnoreCase) >= 0)
         {
@@ -67,7 +72,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
         context.Log.Write("COMMAND", "bcdboot " + string.Join(" ", arguments.Select(ProcessRunner.QuoteArgument)));
         var result = await context.Processes.RunAsync(bcdboot, arguments,
             output: (line, error) => context.Log.Write(error ? "BCDBOOT-STDERR" : "BCDBOOT", line),
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken, timeout: BootTimeout).ConfigureAwait(false);
         context.Log.Write("RESULT", "BCDBoot exit code " + result.ExitCode + "; elapsed " + result.Elapsed);
         if (!result.Succeeded)
             throw new ESDInstallerException("ErrorBcdBoot", "BCDBoot exited with code " + result.ExitCode + ". " + result.StandardError.Trim());
@@ -102,7 +107,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
             {
                 var unload = await context.Processes.RunAsync(reg, new[] { "unload", mount },
                     output: (line, error) => context.Log.Write(error ? "REG-STDERR" : "REG", line),
-                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                    cancellationToken: CancellationToken.None, timeout: RegistryTimeout).ConfigureAwait(false);
                 if (!unload.Succeeded) throw new ESDInstallerException("ErrorWindows11Bypass", "The offline hive could not be unloaded.");
             }
         }
@@ -114,7 +119,7 @@ public sealed class ModernWindowsEngine : IInstallationEngine
         context.Log.Write("COMMAND", "reg " + string.Join(" ", arguments.Select(ProcessRunner.QuoteArgument)));
         var result = await context.Processes.RunAsync(reg, arguments,
             output: (line, error) => context.Log.Write(error ? "REG-STDERR" : "REG", line),
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken, timeout: RegistryTimeout).ConfigureAwait(false);
         if (!result.Succeeded) throw new ESDInstallerException("ErrorWindows11Bypass", "REG exited with code " + result.ExitCode + ".");
         return result;
     }
