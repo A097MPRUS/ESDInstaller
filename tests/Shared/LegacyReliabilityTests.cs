@@ -24,7 +24,13 @@ internal static class LegacyReliabilityTests
             var plan = Plan(path);
             var bytes = ApprovedPlan.Serialize(plan);
             var digest = ApprovedPlan.Digest(bytes);
-            Require(ApprovedPlan.Verify(bytes, digest).PlanId == plan.PlanId, "Approved plan round-trip");
+            var restored = ApprovedPlan.Verify(bytes, digest);
+            Require(restored.PlanId == plan.PlanId, "Approved plan round-trip");
+            // The worker must see every field the user approved. A field dropped by serialization would
+            // mean the elevated worker validates a plan that differs from the one on screen.
+            Require(restored.Edition.Version != null && plan.Edition.Version != null &&
+                    restored.Edition.Version.ToString() == plan.Edition.Version.ToString(),
+                "Edition version did not survive the approved plan");
             Require(ApprovedPlan.Verify(bytes, digest.ToLowerInvariant()).PlanId == plan.PlanId, "Lower-case digest");
             var altered = ApprovedPlan.Serialize(plan with
                 { DestinationPartition = plan.DestinationPartition with { OffsetBytes = 2000 } });

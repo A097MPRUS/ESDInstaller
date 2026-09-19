@@ -5,6 +5,8 @@ namespace ESDInstaller.Windows8.Core.Services;
 
 public sealed class DiskPartService
 {
+    /// <summary>The label the format script applies; also the postcondition used to spot a silent failure.</summary>
+    private const string FormatLabel = "Windows";
     private readonly ProcessRunner _processes;
     private readonly DiskService _disks;
     public DiskPartService(ProcessRunner processes, DiskService disks) { _processes = processes; _disks = disks; }
@@ -19,12 +21,21 @@ public sealed class DiskPartService
         {
             "select disk " + plan.DestinationDisk.DiskNumber,
             "select partition " + plan.DestinationPartition.PartitionNumber,
-            "format fs=ntfs quick label=Windows"
+            "format fs=ntfs quick label=" + FormatLabel
         };
         if (added) lines.Add("assign letter=" + letter);
         await RunScriptAsync(lines, log, cancellationToken).ConfigureAwait(false);
         var actual = await ValidateIdentityAsync(plan, plan.DestinationPartition, cancellationToken).ConfigureAwait(false);
-        return ConfirmDestinationAccess(actual, letter, added);
+        var access = ConfirmDestinationAccess(actual, letter, added);
+        // "diskpart /s" can report a failed command through its console text while still exiting with 0,
+        // and that text is localized, so the exit code alone is not proof the format took effect. The
+        // label this script asked for is the language-independent evidence; a mismatch is recorded here so
+        // a silent failure stays diagnosable instead of surfacing later as a strange installation. It is not
+        // yet treated as fatal because the label can lag briefly after a format on some systems.
+        if (!string.Equals(actual.VolumeLabel, FormatLabel, StringComparison.OrdinalIgnoreCase))
+            log.Write("WARNING", "The destination volume label is '" + actual.VolumeLabel + "' instead of '" +
+                FormatLabel + "'; the destination may not have been formatted as requested.");
+        return access;
     }
 
     internal static VolumeAccess ConfirmDestinationAccess(PartitionInfo actual, char expectedLetter, bool added)
@@ -106,13 +117,26 @@ public sealed class DiskPartService
             var result = await _processes.RunAsync(Path.Combine(Environment.SystemDirectory, "diskpart.exe"),
                 new[] { "/s", scriptPath }, output: (line, error) => log.Write(error ? "DISKPART-STDERR" : "DISKPART", line),
                 cancellationToken: cancellationToken, timeout: TimeSpan.FromMinutes(30)).ConfigureAwait(false);
+            // The markers below only exist in English builds. They are a best-effort addition to the exit
+            // code and are never the reason an installation is considered safe: every caller re-reads the
+            // partition and confirms what its own script was supposed to achieve.
             var combined = result.StandardOutput + "\n" + result.StandardError;
             if (!result.Succeeded || combined.IndexOf("DiskPart has encountered an error", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 combined.IndexOf("Virtual Disk Service error", StringComparison.OrdinalIgnoreCase) >= 0)
                 throw new ESDInstallerException("ErrorFormatDestination",
-                    "DiskPart failed with exit code " + result.ExitCode + ". " + result.StandardError.Trim());
+                    "DiskPart failed with exit code " + result.ExitCode + ". " + Describe(result));
         }
         finally { try { if (File.Exists(scriptPath)) File.Delete(scriptPath); } catch { } }
+    }
+
+    /// <summary>
+    /// DiskPart reports command failures on the console rather than through its exit code, and those
+    /// messages are localized, so both streams are kept for the report instead of one fixed phrase.
+    /// </summary>
+    private static string Describe(ProcessResult result)
+    {
+        var text = (result.StandardError + " " + result.StandardOutput).Trim();
+        return text.Length == 0 ? "DiskPart reported no output." : text;
     }
 
     private static char FindFreeLetter(char preferred)

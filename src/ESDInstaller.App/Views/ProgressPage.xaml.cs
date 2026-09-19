@@ -17,6 +17,7 @@ public sealed partial class ProgressPage : Page
     private readonly DispatcherQueueTimer _timer;
     private string? _logPath;
     private bool _succeeded;
+    private bool _failed;
     private readonly bool _secondaryDisk;
 
     public ProgressPage(WizardCoordinator coordinator)
@@ -43,10 +44,10 @@ public sealed partial class ProgressPage : Page
             }
             _logPath = result.LogPath ?? _logPath;
             if (result.ExitCode != 0 && !_succeeded)
-                HandleFailure(_text.Format("WorkerExitFailure", result.ExitCode), string.Empty);
+                ReportFailure(_text.Format("WorkerExitFailure", result.ExitCode), ExitHint(result.ExitCode));
         }
-        catch (ESDInstallerException exception) { HandleFailure(_text.Get(exception.MessageKey), exception.TechnicalDetail); }
-        catch (Exception exception) { HandleFailure(_text.Get("ErrorUnexpected"), exception.Message); }
+        catch (ESDInstallerException exception) { ReportFailure(_text.Get(exception.MessageKey), exception.TechnicalDetail); }
+        catch (Exception exception) { ReportFailure(_text.Get("ErrorUnexpected"), exception.Message); }
         finally
         {
             _timer.Stop();
@@ -83,6 +84,7 @@ public sealed partial class ProgressPage : Page
     private void HandleFailure(string message, string detail)
     {
         _succeeded = false;
+        _failed = true;
         OperationRing.IsActive = false;
         OperationText.Text = _text.Get("ProgressInstallationFailed");
         ResultBar.Severity = InfoBarSeverity.Error;
@@ -91,6 +93,30 @@ public sealed partial class ProgressPage : Page
         ResultBar.IsOpen = true;
         LogText.Text += $"{DateTime.Now:HH:mm:ss}  {message}  {detail}{Environment.NewLine}";
     }
+
+    /// <summary>
+    /// The worker sends the real reason over the progress channel just before it exits, so that message
+    /// normally arrives first. A later generic exit-code or exception message must not replace it, or the
+    /// user is left without the explanation for a stopped destructive operation. The suppressed message is
+    /// still appended to the log.
+    /// </summary>
+    private void ReportFailure(string message, string detail)
+    {
+        if (_failed)
+        {
+            LogText.Text += $"{DateTime.Now:HH:mm:ss}  {message}  {detail}{Environment.NewLine}";
+            return;
+        }
+        HandleFailure(message, detail);
+    }
+
+    /// <summary>Explains the worker's documented exit codes using text that is already translated.</summary>
+    private string ExitHint(int exitCode) => exitCode switch
+    {
+        740 => _text.Get("AdministratorRequired") + " ",
+        64 or 65 or 66 => _text.Get("ErrorWorkerStart") + " ",
+        _ => string.Empty
+    };
 
     private void OpenLogButton_Click(object sender, RoutedEventArgs e)
     {

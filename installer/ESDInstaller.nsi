@@ -6,7 +6,7 @@ Unicode true
 !include "WinVer.nsh"
 
 !ifndef APP_VERSION
-  !define APP_VERSION "0.1.14"
+  !define APP_VERSION "0.1.15"
 !endif
 !ifndef APP_SOURCE
   !error "APP_SOURCE must point to the self-contained ESDInstaller publish directory."

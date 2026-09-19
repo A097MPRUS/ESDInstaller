@@ -6,7 +6,8 @@ public sealed record WindowsImageEdition(
     string Description,
     CpuArchitecture Architecture,
     int Build,
-    [property: Newtonsoft.Json.JsonIgnore] Version? Version,
+    [property: Newtonsoft.Json.JsonConverter(typeof(VersionStringConverter))]
+    Version? Version,
     long ApproximateSizeBytes);
 
 public sealed record WindowsImage(

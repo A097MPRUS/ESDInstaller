@@ -5,9 +5,9 @@
     <Deterministic>true</Deterministic>
     <Company>ESD Installer Project</Company>
     <Product>ESD Installer</Product>
-    <Version>0.1.14-windows8</Version>
-    <AssemblyVersion>0.1.14.0</AssemblyVersion>
-    <FileVersion>0.1.14.0</FileVersion>
+    <Version>0.1.15-windows8</Version>
+    <AssemblyVersion>0.1.15.0</AssemblyVersion>
+    <FileVersion>0.1.15.0</FileVersion>
     <ManagedWimLibVersion>2.5.3</ManagedWimLibVersion>
   </PropertyGroup>
 </Project>

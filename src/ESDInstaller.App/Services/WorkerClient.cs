@@ -82,7 +82,16 @@ public sealed class WorkerClient
                 try { await connection.ConfigureAwait(false); } catch (OperationCanceledException) { }
                 return new WorkerResult(worker.ExitCode, null, false);
             }
-            await connection.ConfigureAwait(false);
+            try { await connection.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The 45-second connection window elapsed, which normally means the elevation prompt was not
+                // answered. The worker cannot connect to a pipe that is going away, and it stops before it
+                // reads the approved plan, so no disk work has happened. Report this as a start failure, as
+                // the Windows 7 and 8 editions do, instead of letting a cancellation surface as an unknown error.
+                throw new ESDInstallerException("ErrorWorkerStart",
+                    "The elevated worker did not connect within 45 seconds. The administrator prompt may not have been answered.");
+            }
             // Only the worker started above may report progress; another local program could connect first.
             if (!PipeClientVerifier.IsClient(pipe, worker.Id))
                 throw new ESDInstallerException("ErrorWorkerStart", "An unexpected program connected to the installation progress channel.");

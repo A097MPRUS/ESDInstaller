@@ -16,6 +16,7 @@ public partial class ProgressPage : Page
     private readonly DateTime _started = DateTime.UtcNow;
     private readonly DispatcherTimer _timer;
     private string? _logPath;
+    private bool _failed;
     public ProgressPage(WizardCoordinator coordinator)
     {
         InitializeComponent(); _coordinator = coordinator;
@@ -39,7 +40,7 @@ public partial class ProgressPage : Page
             if (result.ExitCode != 0)
             {
                 OperationRing.Visibility = Visibility.Collapsed;
-                ResultBanner.SetError(App.Services.Localizer.Get("ProgressInstallationFailed"), App.Services.Localizer.Format("WorkerExitFailure", result.ExitCode));
+                ReportFailure(App.Services.Localizer.Get("ProgressInstallationFailed"), ExitHint(result.ExitCode) + App.Services.Localizer.Format("WorkerExitFailure", result.ExitCode));
                 ResultBanner.Visibility = Visibility.Visible; _coordinator.InstallationFinished(false); return;
             }
             Overall.Value = 100; Percent.Text = "100%"; OperationRing.Visibility = Visibility.Collapsed;
@@ -50,7 +51,7 @@ public partial class ProgressPage : Page
         catch (Exception exception)
         {
             OperationRing.Visibility = Visibility.Collapsed;
-            ResultBanner.SetError(App.Services.Localizer.Get("ErrorUnexpected"), exception.Message);
+            ReportFailure(App.Services.Localizer.Get("ErrorUnexpected"), exception.Message);
             ResultBanner.Visibility = Visibility.Visible; _coordinator.InstallationFinished(false);
         }
         finally { _timer.Stop(); }
@@ -65,7 +66,37 @@ public partial class ProgressPage : Page
         Log.ScrollToEnd();
         if (message.IsError)
         {
-            ResultBanner.SetError(Operation.Text, message.Detail); ResultBanner.Visibility = Visibility.Visible;
+            _failed = true; ResultBanner.SetError(Operation.Text, message.Detail); ResultBanner.Visibility = Visibility.Visible;
+        }
+    }
+    /// <summary>
+    /// The worker reports the real reason over the progress channel before it exits, so that message is
+    /// shown first. A later generic exit-code or exception message must not replace it, or the user loses
+    /// the only explanation for why a destructive operation stopped.
+    /// </summary>
+    private void ReportFailure(string message, string detail)
+    {
+        if (_failed)
+        {
+            Log.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + message +
+                           (string.IsNullOrWhiteSpace(detail) ? "" : " — " + detail) + Environment.NewLine);
+            Log.ScrollToEnd();
+            return;
+        }
+        _failed = true;
+        ResultBanner.SetError(message, detail);
+        ResultBanner.Visibility = Visibility.Visible;
+    }
+    /// <summary>Explains the worker's documented exit codes using text that is already translated.</summary>
+    private static string ExitHint(int exitCode)
+    {
+        switch (exitCode)
+        {
+            case 740: return App.Services.Localizer.Get("AdministratorRequired") + " ";
+            case 64:
+            case 65:
+            case 66: return App.Services.Localizer.Get("ErrorWorkerStart") + " ";
+            default: return string.Empty;
         }
     }
     private void EnableLogButtons() { var exists = !string.IsNullOrWhiteSpace(_logPath) && File.Exists(_logPath); OpenLog.IsEnabled = SaveLog.IsEnabled = exists; LogButtons.Visibility = exists ? Visibility.Visible : Visibility.Collapsed; }

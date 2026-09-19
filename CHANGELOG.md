@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.15 test release — 2026-09-19
+
+Automated checks passed, but these changes have not yet been tested through a full Windows installation. Try them in a disposable virtual machine first.
+
+### All editions
+
+- When an installation stops, the real reason is now shown instead of a generic "stopped with exit code" message.
+- Worker exit codes are explained in plain words, for example when administrator rights were not granted.
+
+### Windows 10/11
+
+- An unanswered administrator prompt is now reported as the installer not starting, instead of "unexpected error".
+
+### Windows 7 and Windows 8/8.1
+
+- Fixed the installation process occasionally closing without any message partway through an installation.
+- DiskPart errors are now reported with their actual text, and a warning is logged if the destination does not look formatted as requested.
+- A damaged or incomplete ISO is now reported as possibly damaged instead of as an unsupported format.
+
+### Windows 8/8.1
+
+- The chosen edition's Windows version is no longer left out of the approved installation plan.
+
 ## 0.1.14 test release — 2026-09-16
 
 Automated checks passed, but these changes have not yet been tested through a full Windows installation. Try them in a disposable virtual machine first.

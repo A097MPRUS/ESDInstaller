@@ -67,7 +67,14 @@ public sealed class ProcessRunner
                 lock (stderr) stderr.AppendLine(eventArgs.Data);
                 output?.Invoke(eventArgs.Data, true);
             };
-            process.Exited += delegate { exited.TrySetResult(process.ExitCode); };
+            // Reading ExitCode throws if the process was disposed while this callback was queued. An
+            // unhandled exception on this thread-pool callback would terminate the worker, so the failure
+            // is handed to the awaiting caller instead.
+            process.Exited += delegate
+            {
+                try { exited.TrySetResult(process.ExitCode); }
+                catch (Exception exception) { exited.TrySetException(exception); }
+            };
 
             if (!process.Start())
                 throw new InvalidOperationException("Could not start " + Path.GetFileName(executable) + ".");

@@ -211,7 +211,12 @@ public sealed class ModernWindowsEngine : IInstallationEngine
             [pscustomobject]@{ Root="$($partition.DriveLetter):\"; AddedDriveLetter=$added } | ConvertTo-Json -Compress
             """;
         var environment = PlanEnvironment(plan, plan.DestinationPartition);
-        environment["WD_ALLOW_BOOT_DISK"] = plan.DestinationDisk.DiskNumber == plan.DestinationPartition.DiskNumber ? "true" : "false";
+        // Installing onto the disk that currently boots the machine is the supported scenario for this tool,
+        // so the boot-disk guard in the script is always allowed here. The protection that matters is per
+        // partition: ValidatePlanStructure requires the boot partition to be on this same disk, the script
+        // refuses the partition running Windows, and IsProtected/IsBitLocker reject the system, reserved,
+        // recovery and encrypted partitions.
+        environment["WD_ALLOW_BOOT_DISK"] = "true";
         context.Log.Write("COMMAND", "PowerShell Storage: revalidate exact disk/partition identity; Format-Volume NTFS; assign access path if required");
         var result = await context.Processes.RunPowerShellAsync(script, environment,
             output: (line, isError) => context.Log.Write(isError ? "STORAGE-STDERR" : "STORAGE", line),
@@ -306,6 +311,11 @@ public sealed class ModernWindowsEngine : IInstallationEngine
         }
     }
 
+    /// <summary>
+    /// Environment for one validation script. The partition values come from <paramref name="partition"/>;
+    /// the disk values come from the destination disk, because ValidatePlanStructure requires the boot
+    /// partition to be on that same disk, so both refer to the same physical device.
+    /// </summary>
     private static Dictionary<string, string?> PlanEnvironment(InstallationPlan plan, PartitionIdentity partition) => new()
     {
         ["WD_DISK_NUMBER"] = partition.DiskNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),

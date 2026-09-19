@@ -95,6 +95,9 @@ public sealed class ImageService : IDisposable
 
     private static DiscFileSystem OpenIsoFileSystem(Stream stream)
     {
+        // A failed UDF read is kept so a damaged or truncated image reports the real reason instead of
+        // being rewritten as an unsupported filesystem.
+        Exception? udfFailure = null;
         try
         {
             if (UdfReader.Detect(stream))
@@ -103,7 +106,11 @@ public sealed class ImageService : IDisposable
                 return new UdfReader(stream);
             }
         }
-        catch { stream.Position = 0; }
+        catch (Exception exception)
+        {
+            udfFailure = exception;
+            stream.Position = 0;
+        }
 
         try
         {
@@ -116,6 +123,9 @@ public sealed class ImageService : IDisposable
         }
         catch (Exception exception)
         { throw new ESDInstallerException("ErrorIsoMount", "The ISO/UDF filesystem could not be read.", exception); }
+        if (udfFailure != null)
+            throw new ESDInstallerException("ErrorIsoMount",
+                "The disc image could not be read as UDF or ISO 9660 and may be damaged or incomplete.", udfFailure);
         throw new ESDInstallerException("ErrorIsoMount", "The file does not contain a readable ISO 9660 or UDF filesystem.");
     }
 
