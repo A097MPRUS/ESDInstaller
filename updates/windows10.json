@@ -1,6 +1,6 @@
 {
-  "version": "0.1.14",
-  "downloadUrl": "https://github.com/A097MPRUS/ESDInstaller/releases/download/v0.1.14/ESD-Installer-Setup-0.1.14.exe",
-  "sha256": "be6f85eb409218958e2ee7f8be15e62200d1a5fd1e61cbce3efa03d704c5294c",
-  "notes": "Test release with safety and reliability fixes. Try it in a disposable virtual machine first."
+  "version": "0.1.15",
+  "downloadUrl": "https://github.com/A097MPRUS/ESDInstaller/releases/download/v0.1.15/ESD-Installer-Setup-0.1.15.exe",
+  "sha256": "859f314bcbd5d2c5fedea2d2c14622026e4ee7dda7e866cadc1fc07a0ab848c0",
+  "notes": "Test release with reliability fixes. Try it in a disposable virtual machine first."
 }
